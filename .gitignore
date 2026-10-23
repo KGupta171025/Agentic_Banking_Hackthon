@@ -1,6 +1,4 @@
 # Environment variables
-.env
-.env.local
 
 # Python
 __pycache__/
@@ -33,7 +31,7 @@ node_modules/
 out/
 
 # IDE & OS
-.vscode/
 .idea/
 .DS_Store
 Thumbs.db
+config.bat
