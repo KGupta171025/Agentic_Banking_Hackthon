@@ -18,7 +18,7 @@ class AirwallexClient:
         self,
         client_id: str,
         api_key: str,
-        base_url: str = "https://api-sandbox.airwallex.com",
+        base_url: str = "https://api.sandbox.airwallex.com",
     ):
         self.client_id = client_id
         self.api_key = api_key
@@ -95,7 +95,10 @@ class AirwallexClient:
         with httpx.Client(timeout=15.0) as client:
             resp = client.get(url, headers=self._get_headers())
             resp.raise_for_status()
-            return resp.json().get("items", [])
+            data = resp.json()
+            if isinstance(data, list):
+                return data
+            return data.get("items", [])
 
     # ----------------------------------------------------
     # Sandbox Simulation
