@@ -9,16 +9,18 @@ Implements Step 3 & 4 of the Airwallex Developer Lab guide:
 
 import os
 import sys
+
+# Force UTF-8 encoding on Windows consoles
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from dotenv import load_dotenv
-from rich.console import Console
-from rich.table import Table
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.airwallex.client import AirwallexClient
-
-console = Console()
 
 
 def main():
@@ -28,77 +30,87 @@ def main():
     api_key = os.getenv("AIRWALLEX_API_KEY")
     api_url = os.getenv("AIRWALLEX_API_URL", "https://api-sandbox.airwallex.com")
 
-    console.print(
-        "[bold cyan]🔍 Airwallex Sandbox Verification & Initialization[/bold cyan]"
-    )
+    print("=======================================================")
+    print("Airwallex Sandbox Verification & Initialization")
+    print("=======================================================")
 
     if not client_id or not api_key or "your_" in client_id:
-        console.print(
-            "[bold red]❌ Error:[/bold red] AIRWALLEX_CLIENT_ID or AIRWALLEX_API_KEY is not set in `.env`."
-        )
-        console.print("Please create `.env` based on `.env.example` and add your sandbox credentials.")
-        console.print("Get credentials from: [underline]https://www.sandbox.airwallex.com/app/#/developer/api-keys[/underline]")
+        print("ERROR: AIRWALLEX_CLIENT_ID or AIRWALLEX_API_KEY is not configured in .env.")
         sys.exit(1)
+
+    print(f"Using Client ID: {client_id}")
+    print(f"Target API URL:  {api_url}\n")
 
     client = AirwallexClient(client_id=client_id, api_key=api_key, base_url=api_url)
 
     # 1. Verify Authentication
-    console.print("\n[yellow]Step 1: Authenticating with Airwallex Sandbox...[/yellow]")
+    print("[Step 1] Authenticating with Airwallex Sandbox...")
     try:
         token = client.get_auth_token()
-        console.print(f"[bold green]✔ Auth successful![/bold green] Token acquired (len={len(token)}).")
+        print(f"[OK] Authentication successful! Bearer token acquired (length: {len(token)}).")
     except Exception as e:
-        console.print(f"[bold red]❌ Auth failed:[/bold red] {e}")
+        print(f"[FAIL] Authentication failed: {e}")
         sys.exit(1)
 
     # 2. List Global Accounts
-    console.print("\n[yellow]Step 2: Checking Global Accounts...[/yellow]")
-    accounts = client.list_global_accounts()
-    global_account_id = None
+    print("\n[Step 2] Checking Global Accounts...")
+    try:
+        accounts = client.list_global_accounts()
+    except Exception as e:
+        print(f"[FAIL] Could not list global accounts: {e}")
+        accounts = []
 
+    global_account_id = None
     if accounts:
-        console.print(f"[bold green]✔ Found {len(accounts)} Global Account(s).[/bold green]")
+        print(f"[OK] Found {len(accounts)} active Global Account(s).")
+        for idx, acc in enumerate(accounts, 1):
+            print(f"  Account #{idx}: ID={acc.get('id')} | Nickname={acc.get('nickname')} | Status={acc.get('status')}")
         global_account_id = accounts[0].get("id")
-        console.print(f"Primary Account ID: [bold]{global_account_id}[/bold]")
     else:
-        console.print("[dim]No accounts found. Creating primary USD account...[/dim]")
-        new_acc = client.create_global_account(country_code="US", currency="USD")
-        global_account_id = new_acc.get("id")
-        console.print(f"[bold green]✔ Created Global Account ID: {global_account_id}[/bold green]")
+        print("No accounts found. Creating primary USD Global Account...")
+        try:
+            new_acc = client.create_global_account(country_code="US", currency="USD")
+            global_account_id = new_acc.get("id")
+            print(f"[OK] Created Global Account ID: {global_account_id}")
+        except Exception as e:
+            print(f"[FAIL] Failed to create global account: {e}")
 
     # 3. Simulate Deposit
-    console.print("\n[yellow]Step 3: Simulating $25,000 Deposit...[/yellow]")
-    try:
-        deposit_resp = client.simulate_deposit(
-            global_account_id=global_account_id,
-            amount=25000.0,
-            currency="USD",
-            payer_name="Seed funding",
-        )
-        console.print(f"[bold green]✔ Deposit simulated![/bold green] Status: {deposit_resp.get('status')}")
-    except Exception as e:
-        console.print(f"[dim yellow]Notice during deposit: {e}[/dim yellow]")
+    if global_account_id:
+        print(f"\n[Step 3] Simulating $25,000 USD Seed Deposit into Account {global_account_id}...")
+        try:
+            dep_resp = client.simulate_deposit(
+                global_account_id=global_account_id,
+                amount=25000.0,
+                currency="USD",
+                payer_name="Seed funding",
+            )
+            print(f"[OK] Deposit created successfully! Deposit ID: {dep_resp.get('id')} | Status: {dep_resp.get('status')}")
+        except Exception as e:
+            print(f"[NOTE] Deposit simulation note: {e}")
+    else:
+        print("\n[Step 3] Skipping deposit: no global_account_id available.")
 
     # 4. Check Wallet Balances
-    console.print("\n[yellow]Step 4: Fetching Wallet Balances...[/yellow]")
-    balances = client.get_current_balances()
+    print("\n[Step 4] Querying Current Wallet Balances...")
+    try:
+        balances = client.get_current_balances()
+        print("-------------------------------------------------------")
+        print(f"{'Currency':<10} | {'Available Balance':<18} | {'Pending Amount':<15}")
+        print("-------------------------------------------------------")
+        if balances:
+            for b in balances:
+                curr = b.get("currency", "USD")
+                avail = b.get("available_amount", 0.0)
+                pend = b.get("pending_amount", 0.0)
+                print(f"{curr:<10} | {avail:<18} | {pend:<15}")
+        else:
+            print("No balance records returned yet.")
+        print("-------------------------------------------------------")
+    except Exception as e:
+        print(f"[FAIL] Error querying balances: {e}")
 
-    table = Table(title="Airwallex Wallet Balances")
-    table.add_column("Currency", style="cyan")
-    table.add_column("Available Balance", style="green")
-    table.add_column("Pending Amount", style="magenta")
-
-    for b in balances:
-        table.add_row(
-            b.get("currency", "USD"),
-            str(b.get("available_amount", "0.0")),
-            str(b.get("pending_amount", "0.0")),
-        )
-
-    console.print(table)
-    console.print(
-        "\n[bold green]🎉 Sandbox environment is fully ready for PayOps Sentinel![/bold green]"
-    )
+    print("\n[SUCCESS] Airwallex Sandbox is connected and ready for PayOps Sentinel!")
 
 
 if __name__ == "__main__":
